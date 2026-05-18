@@ -48,7 +48,17 @@ const Navbar = () => {
 
     </ul>
     <div style={{display:'flex',gap:'20px',alignItems:'center',marginRight:'40px'}}>
-      <img src={frontend_assets.search_icon} alt='' width='20px'/>
+      <img
+  src={frontend_assets.search_icon}
+  alt=''
+  width='20px'
+  style={{cursor:'pointer'}}
+  onClick={()=>{
+    if(window.location.pathname === '/collection'){
+      window.dispatchEvent(new Event('openSearchBar'))
+    }
+  }}
+/>
       <div
   style={{position:'relative'}}
   onMouseEnter={(e)=>{

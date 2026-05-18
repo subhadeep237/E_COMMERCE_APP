@@ -1,21 +1,113 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { products } from '../assets/assets/frontend_assets/assets'
 
-const productNames = [
-  'Off Shoulder Floral Top',
-  'Oversized Polo T-shirt',
-  'Floral Printed Dress',
-  'Puma Logo Black T-shirt',
-  'Puma Logo Black T-shirt',
-  'Kids Pink Cotton Top',
-  'Men Black Jeans',
-  'Gap Striped Sweatshirt'
-]
-
 const Collection = () => {
+
+  const [category, setCategory] = useState([])
+  const [subCategory, setSubCategory] = useState([])
+  const [sortType, setSortType] = useState('relevant')
+  const [showSearch, setShowSearch] = useState(false)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    const openSearch = () => {
+      setShowSearch(true)
+    }
+
+    window.addEventListener('openSearchBar', openSearch)
+
+    return () => {
+      window.removeEventListener('openSearchBar', openSearch)
+    }
+  }, [])
+
+  const toggleCategory = (e) => {
+    if (category.includes(e.target.value)) {
+      setCategory(prev => prev.filter(item => item !== e.target.value))
+    } else {
+      setCategory(prev => [...prev, e.target.value])
+    }
+  }
+
+  const toggleSubCategory = (e) => {
+    if (subCategory.includes(e.target.value)) {
+      setSubCategory(prev => prev.filter(item => item !== e.target.value))
+    } else {
+      setSubCategory(prev => [...prev, e.target.value])
+    }
+  }
+
+  let filteredProducts = products.filter((item) => {
+
+    const categoryMatch =
+      category.length === 0 || category.includes(item.category)
+
+    const subCategoryMatch =
+      subCategory.length === 0 || subCategory.includes(item.subCategory)
+
+    const searchMatch =
+      item.name.toLowerCase().includes(search.toLowerCase())
+
+    return categoryMatch && subCategoryMatch && searchMatch
+  })
+
+  if (sortType === 'low-high') {
+    filteredProducts.sort((a, b) => a.price - b.price)
+  }
+
+  if (sortType === 'high-low') {
+    filteredProducts.sort((a, b) => b.price - a.price)
+  }
+
   return (
     <div style={{ padding: '30px 6%' }}>
+
+      {showSearch && (
+        <div style={{
+          background:'#f8f8f8',
+          padding:'20px',
+          marginBottom:'40px',
+          display:'flex',
+          justifyContent:'center',
+          alignItems:'center',
+          gap:'15px'
+        }}>
+
+          <input
+            type='text'
+            placeholder='Search'
+            value={search}
+            onChange={(e)=>setSearch(e.target.value)}
+            style={{
+              width:'50%',
+              padding:'12px 20px',
+              borderRadius:'25px',
+              border:'1px solid #aaa',
+              outline:'none',
+              fontSize:'16px'
+            }}
+          />
+
+          <span style={{fontSize:'22px'}}>🔍</span>
+
+          <button
+            onClick={()=>{
+              setShowSearch(false)
+              setSearch('')
+            }}
+            style={{
+              border:'none',
+              background:'transparent',
+              fontSize:'28px',
+              cursor:'pointer'
+            }}
+          >
+            ×
+          </button>
+
+        </div>
+      )}
 
       <style>
         {`
@@ -73,7 +165,6 @@ const Collection = () => {
         }}
       >
 
-        {/* LEFT FILTER */}
         <div
           className='filter-section'
           style={{
@@ -92,15 +183,15 @@ const Collection = () => {
             <p style={{ fontWeight: '600', marginBottom: '15px' }}>CATEGORIES</p>
 
             <label style={{ display: 'block', marginBottom: '12px' }}>
-              <input type='checkbox' /> Men
+              <input type='checkbox' value='Men' onChange={toggleCategory} /> Men
             </label>
 
             <label style={{ display: 'block', marginBottom: '12px' }}>
-              <input type='checkbox' /> Women
+              <input type='checkbox' value='Women' onChange={toggleCategory} /> Women
             </label>
 
             <label style={{ display: 'block' }}>
-              <input type='checkbox' /> Kids
+              <input type='checkbox' value='Kids' onChange={toggleCategory} /> Kids
             </label>
           </div>
 
@@ -111,21 +202,20 @@ const Collection = () => {
             <p style={{ fontWeight: '600', marginBottom: '15px' }}>TYPE</p>
 
             <label style={{ display: 'block', marginBottom: '12px' }}>
-              <input type='checkbox' /> Topwear
+              <input type='checkbox' value='Topwear' onChange={toggleSubCategory} /> Topwear
             </label>
 
             <label style={{ display: 'block', marginBottom: '12px' }}>
-              <input type='checkbox' /> Bottomwear
+              <input type='checkbox' value='Bottomwear' onChange={toggleSubCategory} /> Bottomwear
             </label>
 
             <label style={{ display: 'block' }}>
-              <input type='checkbox' /> Winterwear
+              <input type='checkbox' value='Winterwear' onChange={toggleSubCategory} /> Winterwear
             </label>
           </div>
 
         </div>
 
-        {/* RIGHT PRODUCTS */}
         <div style={{ flex: 1, width: '100%' }}>
 
           <div
@@ -161,6 +251,8 @@ const Collection = () => {
 
             <select
               className='sort-box'
+              value={sortType}
+              onChange={(e) => setSortType(e.target.value)}
               style={{
                 position: 'absolute',
                 right: '0',
@@ -169,9 +261,9 @@ const Collection = () => {
                 border: '1px solid #ccc'
               }}
             >
-              <option>Sort by: Relevant</option>
-              <option>Sort by: Low to High</option>
-              <option>Sort by: High to Low</option>
+              <option value='relevant'>Sort by: Relevant</option>
+              <option value='low-high'>Sort by: Low to High</option>
+              <option value='high-low'>Sort by: High to Low</option>
             </select>
 
           </div>
@@ -185,7 +277,7 @@ const Collection = () => {
             }}
           >
 
-            {products.map((item, index) => (
+            {filteredProducts.map((item, index) => (
               <Link
                 to={`/product/${item._id}`}
                 key={index}
@@ -216,7 +308,7 @@ const Collection = () => {
                     marginTop: '12px',
                     fontSize: '15px'
                   }}>
-                    {productNames[index] || item.name}
+                    {item.name}
                   </p>
 
                   <p style={{
