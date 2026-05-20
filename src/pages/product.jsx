@@ -179,7 +179,7 @@ const Product = () => {
                 alert('Please select a size')
               }
               else{
-                addToCart()
+                addToCart(productData, size)
                 alert(`Added to cart - Size ${size}`)
               }
 
