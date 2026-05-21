@@ -176,11 +176,10 @@ const Product = () => {
             onClick={()=>{
 
               if(size===''){
-                alert('Please select a size')
+                window.alert('Please select a size')
               }
               else{
                 addToCart(productData, size)
-                alert(`Added to cart - Size ${size}`)
               }
 
             }}
