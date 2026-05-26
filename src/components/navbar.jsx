@@ -47,7 +47,9 @@ const Navbar = () => {
           onMouseEnter={(e)=>e.currentTarget.children[1].style.display='block'}
           onMouseLeave={(e)=>e.currentTarget.children[1].style.display='none'}
         >
-          <img src={frontend_assets.profile_icon} alt='' width='20px' />
+          <Link to='/login'>
+  <img src={frontend_assets.profile_icon} alt='' width='20px' />
+</Link>
 
           <div style={{
             display:'none',
