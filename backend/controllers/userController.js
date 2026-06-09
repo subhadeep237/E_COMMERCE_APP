@@ -201,4 +201,11 @@ const getCart = async (req, res) => {
   }
 };
 
-export { loginUser, registerUser, adminLogin, addToCart, updateCart, getCart };
+export {
+  loginUser,
+  registerUser,
+  adminLogin,
+  addToCart,
+  updateCart,
+  getCart,
+};
