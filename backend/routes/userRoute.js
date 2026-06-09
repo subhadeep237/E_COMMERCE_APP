@@ -12,11 +12,12 @@ import authUser from "../middleware/auth.js";
 
 const userRouter = express.Router();
 
+// auth
 userRouter.post("/register", registerUser);
 userRouter.post("/login", loginUser);
 userRouter.post("/admin", adminLogin);
 
-// Cart routes (need login token)
+// cart (user must be logged in)
 userRouter.post("/cart/add", authUser, addToCart);
 userRouter.post("/cart/update", authUser, updateCart);
 userRouter.get("/cart", authUser, getCart);

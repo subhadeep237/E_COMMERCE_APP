@@ -1,29 +1,35 @@
-import express from 'express'
-import cors from 'cors'
-import dotenv from 'dotenv'
-import connectDB from './config/mongodb.js'
-import userRouter from './routes/userRoute.js'
-import productRouter from './routes/productRoute.js'
-import connectCloudinary from './config/cloudinary.js'
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import connectDB from "./config/mongodb.js";
+import connectCloudinary from "./config/cloudinary.js";
 
-dotenv.config()
+import userRouter from "./routes/userRoute.js";
+import productRouter from "./routes/productRoute.js";
+import orderRouter from "./routes/orderRoute.js";
 
-const app = express()
-const port = process.env.PORT || 4000
+dotenv.config();
 
-connectDB()
-connectCloudinary()
+const app = express();
+const port = process.env.PORT || 4000;
 
-app.use(express.json())
-app.use(cors())
+// connect DB + cloudinary
+connectDB();
+connectCloudinary();
 
-app.use('/api/user', userRouter)
-app.use('/api/product', productRouter)
+// middleware
+app.use(express.json());
+app.use(cors());
 
-app.get('/', (req, res) => {
-  res.send("API Working")
-})
+// routes
+app.use("/api/user", userRouter);
+app.use("/api/product", productRouter);
+app.use("/api/order", orderRouter);
+
+app.get("/", (req, res) => {
+  res.send("API Working");
+});
 
 app.listen(port, () => {
-  console.log("Server Started")
-})
+  console.log("Server Started");
+});
