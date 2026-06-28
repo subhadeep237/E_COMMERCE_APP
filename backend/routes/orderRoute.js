@@ -5,6 +5,7 @@ import {
   verifyRazorpay,
   getUserOrders,
   getOrderDetails,
+  cancelOrder,
   getAllOrders,
   updateOrderStatus,
 } from "../controllers/orderController.js";
@@ -15,19 +16,16 @@ const orderRouter = express.Router();
 
 // USER routes
 orderRouter.post("/place", authUser, placeOrder);
-
-// 🆕 RAZORPAY routes
 orderRouter.post("/razorpay", authUser, placeOrderRazorpay);
 orderRouter.post("/verify-razorpay", authUser, verifyRazorpay);
-
-// USER ORDERS: Handled via POST request
 orderRouter.post("/user-orders", authUser, getUserOrders);
+orderRouter.post("/cancel", authUser, cancelOrder);
 
 // ADMIN routes
 orderRouter.get("/admin/all", authAdmin, getAllOrders);
 orderRouter.post("/admin/status", authAdmin, updateOrderStatus);
 
-// USER: track a single order (Must come after admin routes to avoid path parameter overlap)
+// USER: track a single order
 orderRouter.get("/:id", authUser, getOrderDetails);
 
 export default orderRouter;

@@ -1,27 +1,38 @@
 import mongoose from "mongoose";
 
 const connectDB = async () => {
-    try {
-        // Event listener for a successful connection
-        mongoose.connection.on('connected', () => {
-            console.log("DB Connected Successfully ✅");
-        });
+  try {
+    mongoose.connection.on('connected', () => {
+      console.log("DB Connected Successfully ✅");
+    });
 
-        // Event listener for active connection drops or handshaking errors
-        mongoose.connection.on('error', (err) => {
-            console.error("MongoDB Connection Error ❌: ", err);
-        });
+    mongoose.connection.on('error', (err) => {
+      console.error("MongoDB Connection Error ❌: ", err);
+    });
 
-        console.log("Trying to connect MongoDB...");
+    mongoose.connection.on('disconnected', () => {
+      console.log("MongoDB Disconnected ⚠️ - Reconnecting...");
+    });
 
-        await mongoose.connect(`${process.env.MONGODB_URI}`, {
-            serverSelectionTimeoutMS: 5000, // Drop out quickly in 5s if blocked to print errors clearly
-            socketTimeoutMS: 45000,         
-        });
+    console.log("Trying to connect MongoDB...");
 
-    } catch (error) {
-        console.error("MongoDB Initialization Failed 🚨: ", error.message);
-    }
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 60000,
+      connectTimeoutMS: 30000,
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      retryWrites: true,
+      retryReads: true,
+    });
+
+    // Disable mongoose buffering
+    mongoose.set('bufferCommands', false);
+
+  } catch (error) {
+    console.error("MongoDB Initialization Failed 🚨: ", error.message);
+    process.exit(1);
+  }
 };
 
 export default connectDB;

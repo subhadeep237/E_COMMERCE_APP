@@ -3,6 +3,8 @@ import razorpay from "razorpay";
 import crypto from "crypto";
 import orderModel from "../models/orderModel.js";
 import userModel from "../models/userModel.js";
+import productModel from "../models/productModel.js";
+import { sendOrderConfirmationEmail, sendOrderStatusEmail } from "../services/emailService.js";
 
 // ========== RAZORPAY INSTANCE (lazy load) ==========
 let razorpayInstance = null;
@@ -17,27 +19,32 @@ const getRazorpayInstance = () => {
   return razorpayInstance;
 };
 
+// Helper: Send order confirmation email
+const sendOrderEmail = async (order, userId) => {
+  try {
+    const user = await userModel.findById(userId);
+    if (!user) return;
+
+    // Get product details
+    const productIds = order.items.map(item => item.productId);
+    const products = await productModel.find({ _id: { $in: productIds } });
+
+    await sendOrderConfirmationEmail(user.email, order, user.name, products);
+  } catch (error) {
+    console.log("Failed to send order email:", error.message);
+  }
+};
+
 // ========== USER: PLACE ORDER (COD) ==========
 const placeOrder = async (req, res) => {
   try {
     const userIdStr = req.userId;
     const { items, amount, address, paymentMethod } = req.body;
 
-    if (!userIdStr) {
-      return res.json({ success: false, message: "User ID missing from request" });
-    }
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.json({ success: false, message: "Items are required" });
-    }
-
-    if (!amount || amount <= 0) {
-      return res.json({ success: false, message: "Amount is required" });
-    }
-
-    if (!address) {
-      return res.json({ success: false, message: "Address is required" });
-    }
+    if (!userIdStr) return res.json({ success: false, message: "User ID missing" });
+    if (!items || items.length === 0) return res.json({ success: false, message: "Items required" });
+    if (!amount || amount <= 0) return res.json({ success: false, message: "Amount required" });
+    if (!address) return res.json({ success: false, message: "Address required" });
 
     const userId = new mongoose.Types.ObjectId(userIdStr);
 
@@ -62,6 +69,9 @@ const placeOrder = async (req, res) => {
 
     await userModel.findByIdAndUpdate(userId, { cartData: {} });
 
+    // Send confirmation email (don't wait, fire and forget)
+    sendOrderEmail(savedOrder, userId);
+
     res.json({
       success: true,
       message: "Order placed successfully",
@@ -79,21 +89,10 @@ const placeOrderRazorpay = async (req, res) => {
     const userIdStr = req.userId;
     const { items, amount, address } = req.body;
 
-    if (!userIdStr) {
-      return res.json({ success: false, message: "User ID missing from request" });
-    }
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.json({ success: false, message: "Items are required" });
-    }
-
-    if (!amount || amount <= 0) {
-      return res.json({ success: false, message: "Amount is required" });
-    }
-
-    if (!address) {
-      return res.json({ success: false, message: "Address is required" });
-    }
+    if (!userIdStr) return res.json({ success: false, message: "User ID missing" });
+    if (!items || items.length === 0) return res.json({ success: false, message: "Items required" });
+    if (!amount || amount <= 0) return res.json({ success: false, message: "Amount required" });
+    if (!address) return res.json({ success: false, message: "Address required" });
 
     const userId = new mongoose.Types.ObjectId(userIdStr);
 
@@ -148,10 +147,7 @@ const verifyRazorpay = async (req, res) => {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      return res.json({
-        success: false,
-        message: "Missing payment details",
-      });
+      return res.json({ success: false, message: "Missing payment details" });
     }
 
     const sign = razorpay_order_id + "|" + razorpay_payment_id;
@@ -165,11 +161,7 @@ const verifyRazorpay = async (req, res) => {
         { razorpayOrderId: razorpay_order_id },
         { paymentStatus: "Failed" }
       );
-
-      return res.json({
-        success: false,
-        message: "Payment verification failed",
-      });
+      return res.json({ success: false, message: "Payment verification failed" });
     }
 
     const order = await orderModel.findOneAndUpdate(
@@ -187,6 +179,9 @@ const verifyRazorpay = async (req, res) => {
 
     await userModel.findByIdAndUpdate(order.userId, { cartData: {} });
 
+    // Send confirmation email after successful payment
+    sendOrderEmail(order, order.userId);
+
     res.json({
       success: true,
       message: "Payment verified successfully",
@@ -202,13 +197,9 @@ const verifyRazorpay = async (req, res) => {
 const getUserOrders = async (req, res) => {
   try {
     const userIdStr = req.userId;
-
-    if (!userIdStr) {
-      return res.json({ success: false, message: "User ID missing from request" });
-    }
+    if (!userIdStr) return res.json({ success: false, message: "User ID missing" });
 
     const userId = new mongoose.Types.ObjectId(userIdStr);
-
     const orders = await orderModel.find({ userId }).sort({ createdAt: -1 });
 
     res.json({ success: true, orders });
@@ -224,15 +215,65 @@ const getOrderDetails = async (req, res) => {
     const { id } = req.params;
 
     const order = await orderModel.findById(id);
-    if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
     if (String(order.userId) !== String(req.userId)) {
-      return res.status(403).json({ success: false, message: "Not authorized for this order" });
+      return res.status(403).json({ success: false, message: "Not authorized" });
     }
 
     res.json({ success: true, order });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+// ========== USER: CANCEL OWN ORDER ==========
+const cancelOrder = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { orderId } = req.body;
+
+    if (!orderId) return res.json({ success: false, message: "Order ID required" });
+
+    const order = await orderModel.findById(orderId);
+    if (!order) return res.json({ success: false, message: "Order not found" });
+
+    if (String(order.userId) !== String(userId)) {
+      return res.json({ success: false, message: "Not authorized" });
+    }
+
+    const nonCancellable = ["Shipped", "Delivered", "Cancelled"];
+    if (nonCancellable.includes(order.orderStatus)) {
+      return res.json({
+        success: false,
+        message: `Cannot cancel order. Current status: ${order.orderStatus}`,
+      });
+    }
+
+    order.orderStatus = "Cancelled";
+
+    if (order.paymentStatus === "Paid") {
+      order.paymentStatus = "Refund Pending";
+    }
+
+    await order.save();
+
+    // Send cancellation email
+    try {
+      const user = await userModel.findById(userId);
+      if (user) {
+        sendOrderStatusEmail(user.email, order, user.name, "Cancelled");
+      }
+    } catch (e) {
+      console.log("Cancel email failed:", e.message);
+    }
+
+    res.json({
+      success: true,
+      message: "Order cancelled successfully",
+      order,
+    });
   } catch (error) {
     console.log(error);
     res.json({ success: false, message: error.message });
@@ -256,12 +297,12 @@ const updateOrderStatus = async (req, res) => {
     const { orderId, status } = req.body;
 
     if (!orderId || !status) {
-      return res.json({ success: false, message: "orderId and status are required" });
+      return res.json({ success: false, message: "orderId and status required" });
     }
 
     const allowed = ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"];
     if (!allowed.includes(status)) {
-      return res.json({ success: false, message: "Invalid status value" });
+      return res.json({ success: false, message: "Invalid status" });
     }
 
     const order = await orderModel.findByIdAndUpdate(
@@ -272,6 +313,16 @@ const updateOrderStatus = async (req, res) => {
 
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    // Send status update email
+    try {
+      const user = await userModel.findById(order.userId);
+      if (user) {
+        sendOrderStatusEmail(user.email, order, user.name, status);
+      }
+    } catch (e) {
+      console.log("Status email failed:", e.message);
     }
 
     res.json({ success: true, message: "Order status updated", order });
@@ -287,6 +338,7 @@ export {
   verifyRazorpay,
   getUserOrders,
   getOrderDetails,
+  cancelOrder,
   getAllOrders,
   updateOrderStatus,
 };

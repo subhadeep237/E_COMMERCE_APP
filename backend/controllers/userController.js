@@ -2,12 +2,285 @@ import validator from "validator";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import userModel from "../models/userModel.js";
+import otpModel from "../models/otpModel.js";
+import { sendOTPEmail } from "../services/emailService.js";
 
 const createToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET);
 };
 
-// ================= REGISTER USER =================
+// Generate random 6-digit OTP
+const generateOTP = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+// ================= 🆕 SEND SIGNUP OTP =================
+// POST /api/user/send-signup-otp
+// Body: { name, email, password }
+const sendSignupOTP = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.json({ success: false, message: "All fields are required" });
+    }
+
+    if (!validator.isEmail(email)) {
+      return res.json({ success: false, message: "Please enter a valid email" });
+    }
+
+    if (password.length < 8) {
+      return res.json({
+        success: false,
+        message: "Password must be at least 8 characters",
+      });
+    }
+
+    // Check if user already exists
+    const exists = await userModel.findOne({ email });
+    if (exists) {
+      return res.json({ success: false, message: "User already exists" });
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+
+    // Hash password (so we don't store plain password in OTP collection)
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Delete any existing OTP for this email
+    await otpModel.deleteMany({ email, purpose: "signup" });
+
+    // Save OTP with user data
+    await otpModel.create({
+      email,
+      otp,
+      purpose: "signup",
+      userData: {
+        name,
+        password: hashedPassword,
+      },
+    });
+
+    // Send OTP email
+    const emailResult = await sendOTPEmail(email, otp, "verification");
+
+    if (!emailResult.success) {
+      return res.json({
+        success: false,
+        message: "Failed to send OTP email. Please try again.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "OTP sent to your email. Please verify to complete signup.",
+    });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+// ================= 🆕 VERIFY SIGNUP OTP & CREATE ACCOUNT =================
+// POST /api/user/verify-signup-otp
+// Body: { email, otp }
+const verifySignupOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.json({ success: false, message: "Email and OTP are required" });
+    }
+
+    // Find OTP record
+    const otpRecord = await otpModel.findOne({
+      email,
+      purpose: "signup",
+    });
+
+    if (!otpRecord) {
+      return res.json({
+        success: false,
+        message: "OTP expired or not found. Please request a new one.",
+      });
+    }
+
+    // Verify OTP
+    if (otpRecord.otp !== otp) {
+      return res.json({ success: false, message: "Invalid OTP" });
+    }
+
+    // Create user account
+    const newUser = new userModel({
+      name: otpRecord.userData.name,
+      email,
+      password: otpRecord.userData.password,
+    });
+
+    const user = await newUser.save();
+
+    // Delete OTP record
+    await otpModel.deleteOne({ _id: otpRecord._id });
+
+    // Generate token & auto-login
+    const token = createToken(user._id);
+
+    res.json({
+      success: true,
+      message: "Account created successfully!",
+      token,
+    });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+// ================= 🆕 RESEND OTP =================
+// POST /api/user/resend-otp
+// Body: { email, purpose }
+const resendOTP = async (req, res) => {
+  try {
+    const { email, purpose } = req.body;
+
+    if (!email || !purpose) {
+      return res.json({ success: false, message: "Email and purpose required" });
+    }
+
+    // Find existing OTP record
+    const otpRecord = await otpModel.findOne({ email, purpose });
+
+    if (!otpRecord) {
+      return res.json({
+        success: false,
+        message: "No active OTP request. Please start over.",
+      });
+    }
+
+    // Generate new OTP
+    const newOTP = generateOTP();
+
+    // Update OTP & reset timer
+    otpRecord.otp = newOTP;
+    otpRecord.createdAt = new Date();
+    await otpRecord.save();
+
+    // Send email
+    const emailPurpose = purpose === "signup" ? "verification" : "reset";
+    await sendOTPEmail(email, newOTP, emailPurpose);
+
+    res.json({ success: true, message: "New OTP sent to your email" });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+// ================= 🆕 FORGOT PASSWORD - SEND OTP =================
+// POST /api/user/forgot-password
+// Body: { email }
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.json({ success: false, message: "Email is required" });
+    }
+
+    // Check if user exists
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.json({ success: false, message: "No account found with this email" });
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+
+    // Delete any existing OTP
+    await otpModel.deleteMany({ email, purpose: "reset-password" });
+
+    // Save OTP
+    await otpModel.create({
+      email,
+      otp,
+      purpose: "reset-password",
+    });
+
+    // Send email
+    const emailResult = await sendOTPEmail(email, otp, "reset");
+
+    if (!emailResult.success) {
+      return res.json({
+        success: false,
+        message: "Failed to send OTP. Please try again.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "OTP sent to your email to reset password",
+    });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+// ================= 🆕 RESET PASSWORD WITH OTP =================
+// POST /api/user/reset-password
+// Body: { email, otp, newPassword }
+const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.json({ success: false, message: "All fields are required" });
+    }
+
+    if (newPassword.length < 8) {
+      return res.json({
+        success: false,
+        message: "Password must be at least 8 characters",
+      });
+    }
+
+    // Find OTP record
+    const otpRecord = await otpModel.findOne({
+      email,
+      purpose: "reset-password",
+    });
+
+    if (!otpRecord) {
+      return res.json({
+        success: false,
+        message: "OTP expired. Please request a new one.",
+      });
+    }
+
+    if (otpRecord.otp !== otp) {
+      return res.json({ success: false, message: "Invalid OTP" });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update user password
+    await userModel.findOneAndUpdate({ email }, { password: hashedPassword });
+
+    // Delete OTP record
+    await otpModel.deleteOne({ _id: otpRecord._id });
+
+    res.json({ success: true, message: "Password reset successfully! Please login." });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+// ================= REGISTER USER (OLD - keeping for compatibility) =================
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -95,13 +368,6 @@ const adminLogin = async (req, res) => {
 };
 
 // ================= CART LOGIC =================
-// cartData in user document will look like:
-// {
-//   "<productId1>": { "M": 2, "L": 1 },
-//   "<productId2>": { "S": 1 }
-// }
-
-// Add 1 item (product+size) to cart
 const addToCart = async (req, res) => {
   try {
     const userId = req.userId;
@@ -140,7 +406,6 @@ const addToCart = async (req, res) => {
   }
 };
 
-// Set quantity for a product+size, or remove if 0
 const updateCart = async (req, res) => {
   try {
     const userId = req.userId;
@@ -165,7 +430,6 @@ const updateCart = async (req, res) => {
     }
 
     if (quantity <= 0) {
-      // remove size
       delete cartData[productId][size];
       if (Object.keys(cartData[productId]).length === 0) {
         delete cartData[productId];
@@ -184,7 +448,6 @@ const updateCart = async (req, res) => {
   }
 };
 
-// Get current user's cart
 const getCart = async (req, res) => {
   try {
     const userId = req.userId;
@@ -208,4 +471,9 @@ export {
   addToCart,
   updateCart,
   getCart,
+  sendSignupOTP,
+  verifySignupOTP,
+  resendOTP,
+  forgotPassword,
+  resetPassword,
 };
