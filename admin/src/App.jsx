@@ -10,7 +10,7 @@ import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 
 // Backend API base url
-export const backendUrl = "http://localhost:4000"
+export const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 
 const App = () => {
   const [token, setToken] = useState(localStorage.getItem('token') || '')
