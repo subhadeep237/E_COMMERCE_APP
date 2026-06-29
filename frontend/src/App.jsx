@@ -9,7 +9,7 @@ import Cart from './pages/cart'
 import Login from './pages/login'
 import Placeorder from './pages/placeorder'
 import Orders from './pages/orders'
-import TrackOrder from './pages/trackorder'
+import TrackOrder from './pages/Trackorder'
 import Footer from './components/Footer'
 import Navbar from './components/navbar'
 
