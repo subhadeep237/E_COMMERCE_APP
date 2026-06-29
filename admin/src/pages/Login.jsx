@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import axios from 'axios'
 import { toast } from 'react-toastify'
+import { backendUrl } from '../App'
 
 const Login = ({ setToken }) => {
   const [email, setEmail] = useState('')
@@ -17,7 +18,7 @@ const Login = ({ setToken }) => {
 
     try {
       setLoading(true)
-      const response = await axios.post('http://localhost:4000/api/user/admin', {
+      const response = await axios.post(backendUrl + '/api/user/admin', {
         email,
         password
       })
@@ -158,7 +159,8 @@ const inputStyle = {
   outline: 'none',
   fontSize: '14px',
   transition: '0.2s',
-  background: '#f8fafc'
+  background: '#f8fafc',
+  color: '#1e293b'
 }
 
 export default Login
