@@ -14,26 +14,35 @@ import {
 } from "../controllers/userController.js";
 
 import authUser from "../middleware/auth.js";
+import {
+  validateRegister,
+  validateLogin,
+  validateOTP,
+  validateForgotPassword,
+  validateResetPassword,
+  validateAddToCart,
+  validateUpdateCart,
+} from "../middleware/validator.js";
 
 const userRouter = express.Router();
 
-// OTP-based signup (NEW)
-userRouter.post("/send-signup-otp", sendSignupOTP);
-userRouter.post("/verify-signup-otp", verifySignupOTP);
+// OTP-based signup
+userRouter.post("/send-signup-otp", validateRegister, sendSignupOTP);
+userRouter.post("/verify-signup-otp", validateOTP, verifySignupOTP);
 userRouter.post("/resend-otp", resendOTP);
 
-// Forgot password (NEW)
-userRouter.post("/forgot-password", forgotPassword);
-userRouter.post("/reset-password", resetPassword);
+// Forgot password
+userRouter.post("/forgot-password", validateForgotPassword, forgotPassword);
+userRouter.post("/reset-password", validateResetPassword, resetPassword);
 
 // Old auth (kept for compatibility)
-userRouter.post("/register", registerUser);
-userRouter.post("/login", loginUser);
-userRouter.post("/admin", adminLogin);
+userRouter.post("/register", validateRegister, registerUser);
+userRouter.post("/login", validateLogin, loginUser);
+userRouter.post("/admin", validateLogin, adminLogin);
 
-// Cart (user must be logged in)
-userRouter.post("/cart/add", authUser, addToCart);
-userRouter.post("/cart/update", authUser, updateCart);
+// Cart
+userRouter.post("/cart/add", authUser, validateAddToCart, addToCart);
+userRouter.post("/cart/update", authUser, validateUpdateCart, updateCart);
 userRouter.get("/cart", authUser, getCart);
 
 export default userRouter;

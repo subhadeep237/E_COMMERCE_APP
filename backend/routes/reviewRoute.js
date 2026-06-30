@@ -8,18 +8,19 @@ import {
 } from "../controllers/reviewController.js";
 import authUser from "../middleware/auth.js";
 import authAdmin from "../middleware/adminAuth.js";
+import { validateAddReview, validateMongoId } from "../middleware/validator.js";
 
 const reviewRouter = express.Router();
 
 // USER routes
-reviewRouter.post("/add", authUser, addReview);
-reviewRouter.delete("/:id", authUser, deleteReview);
+reviewRouter.post("/add", authUser, validateAddReview, addReview);
+reviewRouter.delete("/:id", authUser, validateMongoId("id"), deleteReview);
 
-// PUBLIC routes (anyone can see reviews)
-reviewRouter.get("/product/:productId", getProductReviews);
+// PUBLIC routes
+reviewRouter.get("/product/:productId", validateMongoId("productId"), getProductReviews);
 reviewRouter.get("/stats", getAllReviewsStats);
 
 // ADMIN routes
-reviewRouter.delete("/admin/:id", authAdmin, adminDeleteReview);
+reviewRouter.delete("/admin/:id", authAdmin, validateMongoId("id"), adminDeleteReview);
 
 export default reviewRouter;
