@@ -3,7 +3,8 @@ import mongoose from "mongoose";
 const productSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: true
+    required: true,
+    index: true, // 🚀 Index for search
   },
   description: {
     type: String,
@@ -11,7 +12,8 @@ const productSchema = new mongoose.Schema({
   },
   price: {
     type: Number,
-    required: true
+    required: true,
+    index: true, // 🚀 Index for price filtering/sorting
   },
   image: {
     type: Array,
@@ -19,25 +21,33 @@ const productSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    required: true
+    required: true,
+    index: true, // 🚀 Index for category filter
   },
   subCategory: {
     type: String,
-    required: true
+    required: true,
+    index: true, // 🚀 Index for subCategory filter
   },
   sizes: {
     type: Array,
     required: true
   },
   bestseller: {
-    type: Boolean
+    type: Boolean,
+    index: true, // 🚀 Index for bestseller filter
   },
   date: {
     type: Number,
-    required: true
+    required: true,
+    index: true, // 🚀 Index for sorting by date
   }
-})
+});
 
-const productModel = mongoose.models.product || mongoose.model("product", productSchema)
+// 🚀 Compound index for common queries
+productSchema.index({ category: 1, subCategory: 1 });
+productSchema.index({ name: "text", description: "text" }); // Full-text search
 
-export default productModel
+const productModel = mongoose.models.product || mongoose.model("product", productSchema);
+
+export default productModel;

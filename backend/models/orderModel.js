@@ -25,6 +25,7 @@ const orderSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "user",
     required: true,
+    index: true, // 🚀 Fast lookup by user
   },
 
   items: {
@@ -50,24 +51,37 @@ const orderSchema = new mongoose.Schema({
 
   paymentStatus: {
     type: String,
-    enum: ["Pending", "Paid", "Failed"],
+    enum: ["Pending", "Paid", "Failed", "Refund Pending"],
     default: "Pending",
+    index: true, // 🚀 For filtering by payment status
   },
 
-  // for tracking
   orderStatus: {
     type: String,
     enum: ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"],
     default: "Pending",
+    index: true, // 🚀 For filtering by order status
   },
 
   createdAt: {
     type: Date,
     default: Date.now,
+    index: true, // 🚀 For sorting by date
+  },
+
+  razorpayOrderId: {
+    type: String,
+    default: null,
+  },
+  razorpayPaymentId: {
+    type: String,
+    default: null,
   },
 });
 
-const orderModel =
-  mongoose.models.order || mongoose.model("order", orderSchema);
+// 🚀 Compound index for user orders sorted by date
+orderSchema.index({ userId: 1, createdAt: -1 });
+
+const orderModel = mongoose.models.order || mongoose.model("order", orderSchema);
 
 export default orderModel;

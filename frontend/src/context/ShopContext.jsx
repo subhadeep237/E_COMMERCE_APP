@@ -19,7 +19,7 @@ const ShopContextProvider = ({ children }) => {
     const initApp = async () => {
       try {
         console.log('📦 Fetching products...')
-        const response = await axios.get(backendUrl + '/api/product/list')
+        const response = await axios.get(backendUrl + '/api/product/list?all=true')
 
         if (response.data.success) {
           console.log('✅ Products fetched:', response.data.products.length)
@@ -135,6 +135,7 @@ const ShopContextProvider = ({ children }) => {
     }
   }
 
+  // REMOVE FROM CART (decrease quantity)
   const removeFromCart = async (id, size) => {
     const updatedItem = cartItems.find(item => item._id === id && item.size === size)
     const newQuantity = updatedItem ? updatedItem.quantity - 1 : 0
@@ -162,6 +163,7 @@ const ShopContextProvider = ({ children }) => {
     }
   }
 
+  // DELETE FROM CART (remove completely)
   const deleteFromCart = async (id, size) => {
     setCartItems(prev =>
       prev.filter(item => !(item._id === id && item.size === size))
