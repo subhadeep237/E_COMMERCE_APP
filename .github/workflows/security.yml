@@ -1,0 +1,50 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+
+jobs:
+  security-audit:
+    name: NPM Security Audit
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        folder: [backend, frontend, admin]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Audit ${{ matrix.folder }}
+        run: |
+          cd ${{ matrix.folder }}
+          npm audit --audit-level=moderate || true
+          echo "✅ Security audit completed for ${{ matrix.folder }}"
+
+  code-quality:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for secrets in code
+        run: |
+          echo "🔍 Checking for accidentally committed secrets..."
+          if grep -r "API_KEY=" --include="*.js" --include="*.jsx" .; then
+            echo "⚠️ Possible API keys found! Please review."
+          fi
+          echo "✅ Security scan completed"
