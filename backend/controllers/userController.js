@@ -9,14 +9,11 @@ const createToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET);
 };
 
-// Generate random 6-digit OTP
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// ================= 🆕 SEND SIGNUP OTP =================
-// POST /api/user/send-signup-otp
-// Body: { name, email, password }
+// ================= SEND SIGNUP OTP =================
 const sendSignupOTP = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -30,62 +27,39 @@ const sendSignupOTP = async (req, res) => {
     }
 
     if (password.length < 8) {
-      return res.json({
-        success: false,
-        message: "Password must be at least 8 characters",
-      });
+      return res.json({ success: false, message: "Password must be at least 8 characters" });
     }
 
-    // Check if user already exists
     const exists = await userModel.findOne({ email });
     if (exists) {
       return res.json({ success: false, message: "User already exists" });
     }
 
-    // Generate OTP
     const otp = generateOTP();
-
-    // Hash password (so we don't store plain password in OTP collection)
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Delete any existing OTP for this email
     await otpModel.deleteMany({ email, purpose: "signup" });
-
-    // Save OTP with user data
     await otpModel.create({
       email,
       otp,
       purpose: "signup",
-      userData: {
-        name,
-        password: hashedPassword,
-      },
+      userData: { name, password: hashedPassword },
     });
 
-    // Send OTP email
     const emailResult = await sendOTPEmail(email, otp, "verification");
-
     if (!emailResult.success) {
-      return res.json({
-        success: false,
-        message: "Failed to send OTP email. Please try again.",
-      });
+      return res.json({ success: false, message: "Failed to send OTP email" });
     }
 
-    res.json({
-      success: true,
-      message: "OTP sent to your email. Please verify to complete signup.",
-    });
+    res.json({ success: true, message: "OTP sent to your email" });
   } catch (error) {
     console.log(error);
     res.json({ success: false, message: error.message });
   }
 };
 
-// ================= 🆕 VERIFY SIGNUP OTP & CREATE ACCOUNT =================
-// POST /api/user/verify-signup-otp
-// Body: { email, otp }
+// ================= VERIFY SIGNUP OTP =================
 const verifySignupOTP = async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -94,25 +68,15 @@ const verifySignupOTP = async (req, res) => {
       return res.json({ success: false, message: "Email and OTP are required" });
     }
 
-    // Find OTP record
-    const otpRecord = await otpModel.findOne({
-      email,
-      purpose: "signup",
-    });
-
+    const otpRecord = await otpModel.findOne({ email, purpose: "signup" });
     if (!otpRecord) {
-      return res.json({
-        success: false,
-        message: "OTP expired or not found. Please request a new one.",
-      });
+      return res.json({ success: false, message: "OTP expired or not found" });
     }
 
-    // Verify OTP
     if (otpRecord.otp !== otp) {
       return res.json({ success: false, message: "Invalid OTP" });
     }
 
-    // Create user account
     const newUser = new userModel({
       name: otpRecord.userData.name,
       email,
@@ -120,199 +84,119 @@ const verifySignupOTP = async (req, res) => {
     });
 
     const user = await newUser.save();
-
-    // Delete OTP record
     await otpModel.deleteOne({ _id: otpRecord._id });
 
-    // Generate token & auto-login
     const token = createToken(user._id);
-
-    res.json({
-      success: true,
-      message: "Account created successfully!",
-      token,
-    });
+    res.json({ success: true, message: "Account created successfully!", token });
   } catch (error) {
     console.log(error);
     res.json({ success: false, message: error.message });
   }
 };
 
-// ================= 🆕 RESEND OTP =================
-// POST /api/user/resend-otp
-// Body: { email, purpose }
+// ================= RESEND OTP =================
 const resendOTP = async (req, res) => {
   try {
     const { email, purpose } = req.body;
-
     if (!email || !purpose) {
       return res.json({ success: false, message: "Email and purpose required" });
     }
 
-    // Find existing OTP record
     const otpRecord = await otpModel.findOne({ email, purpose });
-
     if (!otpRecord) {
-      return res.json({
-        success: false,
-        message: "No active OTP request. Please start over.",
-      });
+      return res.json({ success: false, message: "No active OTP request" });
     }
 
-    // Generate new OTP
     const newOTP = generateOTP();
-
-    // Update OTP & reset timer
     otpRecord.otp = newOTP;
     otpRecord.createdAt = new Date();
     await otpRecord.save();
 
-    // Send email
     const emailPurpose = purpose === "signup" ? "verification" : "reset";
     await sendOTPEmail(email, newOTP, emailPurpose);
 
-    res.json({ success: true, message: "New OTP sent to your email" });
+    res.json({ success: true, message: "New OTP sent" });
   } catch (error) {
     console.log(error);
     res.json({ success: false, message: error.message });
   }
 };
 
-// ================= 🆕 FORGOT PASSWORD - SEND OTP =================
-// POST /api/user/forgot-password
-// Body: { email }
+// ================= FORGOT PASSWORD =================
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
+    if (!email) return res.json({ success: false, message: "Email required" });
 
-    if (!email) {
-      return res.json({ success: false, message: "Email is required" });
-    }
-
-    // Check if user exists
     const user = await userModel.findOne({ email });
-    if (!user) {
-      return res.json({ success: false, message: "No account found with this email" });
-    }
+    if (!user) return res.json({ success: false, message: "No account found" });
 
-    // Generate OTP
     const otp = generateOTP();
-
-    // Delete any existing OTP
     await otpModel.deleteMany({ email, purpose: "reset-password" });
+    await otpModel.create({ email, otp, purpose: "reset-password" });
 
-    // Save OTP
-    await otpModel.create({
-      email,
-      otp,
-      purpose: "reset-password",
-    });
-
-    // Send email
     const emailResult = await sendOTPEmail(email, otp, "reset");
-
     if (!emailResult.success) {
-      return res.json({
-        success: false,
-        message: "Failed to send OTP. Please try again.",
-      });
+      return res.json({ success: false, message: "Failed to send OTP" });
     }
 
-    res.json({
-      success: true,
-      message: "OTP sent to your email to reset password",
-    });
+    res.json({ success: true, message: "OTP sent to your email" });
   } catch (error) {
     console.log(error);
     res.json({ success: false, message: error.message });
   }
 };
 
-// ================= 🆕 RESET PASSWORD WITH OTP =================
-// POST /api/user/reset-password
-// Body: { email, otp, newPassword }
+// ================= RESET PASSWORD =================
 const resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
-
     if (!email || !otp || !newPassword) {
-      return res.json({ success: false, message: "All fields are required" });
+      return res.json({ success: false, message: "All fields required" });
     }
 
     if (newPassword.length < 8) {
-      return res.json({
-        success: false,
-        message: "Password must be at least 8 characters",
-      });
+      return res.json({ success: false, message: "Password must be at least 8 characters" });
     }
 
-    // Find OTP record
-    const otpRecord = await otpModel.findOne({
-      email,
-      purpose: "reset-password",
-    });
+    const otpRecord = await otpModel.findOne({ email, purpose: "reset-password" });
+    if (!otpRecord) return res.json({ success: false, message: "OTP expired" });
+    if (otpRecord.otp !== otp) return res.json({ success: false, message: "Invalid OTP" });
 
-    if (!otpRecord) {
-      return res.json({
-        success: false,
-        message: "OTP expired. Please request a new one.",
-      });
-    }
-
-    if (otpRecord.otp !== otp) {
-      return res.json({ success: false, message: "Invalid OTP" });
-    }
-
-    // Hash new password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // Update user password
     await userModel.findOneAndUpdate({ email }, { password: hashedPassword });
-
-    // Delete OTP record
     await otpModel.deleteOne({ _id: otpRecord._id });
 
-    res.json({ success: true, message: "Password reset successfully! Please login." });
+    res.json({ success: true, message: "Password reset successfully!" });
   } catch (error) {
     console.log(error);
     res.json({ success: false, message: error.message });
   }
 };
 
-// ================= REGISTER USER (OLD - keeping for compatibility) =================
+// ================= REGISTER USER (OLD - for compatibility) =================
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
     const exists = await userModel.findOne({ email });
-
-    if (exists) {
-      return res.json({ success: false, message: "User already exists" });
-    }
+    if (exists) return res.json({ success: false, message: "User already exists" });
 
     if (!validator.isEmail(email)) {
       return res.json({ success: false, message: "Please enter a valid email" });
     }
 
     if (password.length < 8) {
-      return res.json({
-        success: false,
-        message: "Password must be at least 8 characters",
-      });
+      return res.json({ success: false, message: "Password must be at least 8 characters" });
     }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const newUser = new userModel({
-      name,
-      email,
-      password: hashedPassword,
-    });
-
+    const newUser = new userModel({ name, email, password: hashedPassword });
     const user = await newUser.save();
-
     const token = createToken(user._id);
 
     res.json({ success: true, token });
@@ -328,13 +212,9 @@ const loginUser = async (req, res) => {
     const { email, password } = req.body;
 
     const user = await userModel.findOne({ email });
-
-    if (!user) {
-      return res.json({ success: false, message: "User does not exist" });
-    }
+    if (!user) return res.json({ success: false, message: "User does not exist" });
 
     const isMatch = await bcrypt.compare(password, user.password);
-
     if (isMatch) {
       const token = createToken(user._id);
       res.json({ success: true, token });
@@ -352,10 +232,7 @@ const adminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (
-      email === process.env.ADMIN_EMAIL &&
-      password === process.env.ADMIN_PASSWORD
-    ) {
+    if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
       const token = jwt.sign(email + password, process.env.JWT_SECRET);
       res.json({ success: true, token });
     } else {
@@ -367,63 +244,62 @@ const adminLogin = async (req, res) => {
   }
 };
 
-// ================= CART LOGIC =================
+// ================= 🔧 FIXED: ADD TO CART =================
 const addToCart = async (req, res) => {
   try {
     const userId = req.userId;
     const { productId, size } = req.body;
 
     if (!productId || !size) {
-      return res.json({
-        success: false,
-        message: "productId and size are required",
-      });
+      return res.json({ success: false, message: "productId and size are required" });
     }
 
     const user = await userModel.findById(userId);
-    if (!user) {
-      return res.json({ success: false, message: "User not found" });
-    }
+    if (!user) return res.json({ success: false, message: "User not found" });
 
-    const cartData = user.cartData || {};
+    // Get current cart (or empty object)
+    let cartData = user.cartData || {};
 
+    // Initialize product entry if it doesn't exist
     if (!cartData[productId]) {
       cartData[productId] = {};
     }
-    if (!cartData[productId][size]) {
-      cartData[productId][size] = 0;
+
+    // Increment quantity for the size
+    if (cartData[productId][size]) {
+      cartData[productId][size] += 1;
+    } else {
+      cartData[productId][size] = 1;
     }
 
-    cartData[productId][size] += 1;
-
-    user.cartData = cartData;
-    await user.save();
+    // 🔧 CRITICAL FIX: Use findByIdAndUpdate to force save
+    await userModel.findByIdAndUpdate(
+      userId,
+      { cartData: cartData },
+      { new: true }
+    );
 
     res.json({ success: true, message: "Added to cart", cartData });
   } catch (error) {
-    console.log(error);
+    console.log("Add to cart error:", error);
     res.json({ success: false, message: error.message });
   }
 };
 
+// ================= 🔧 FIXED: UPDATE CART =================
 const updateCart = async (req, res) => {
   try {
     const userId = req.userId;
     const { productId, size, quantity } = req.body;
 
     if (!productId || !size || quantity === undefined) {
-      return res.json({
-        success: false,
-        message: "productId, size and quantity are required",
-      });
+      return res.json({ success: false, message: "All fields required" });
     }
 
     const user = await userModel.findById(userId);
-    if (!user) {
-      return res.json({ success: false, message: "User not found" });
-    }
+    if (!user) return res.json({ success: false, message: "User not found" });
 
-    const cartData = user.cartData || {};
+    let cartData = user.cartData || {};
 
     if (!cartData[productId]) {
       cartData[productId] = {};
@@ -438,24 +314,26 @@ const updateCart = async (req, res) => {
       cartData[productId][size] = quantity;
     }
 
-    user.cartData = cartData;
-    await user.save();
+    // 🔧 CRITICAL FIX: Use findByIdAndUpdate
+    await userModel.findByIdAndUpdate(
+      userId,
+      { cartData: cartData },
+      { new: true }
+    );
 
     res.json({ success: true, message: "Cart updated", cartData });
   } catch (error) {
-    console.log(error);
+    console.log("Update cart error:", error);
     res.json({ success: false, message: error.message });
   }
 };
 
+// ================= GET CART =================
 const getCart = async (req, res) => {
   try {
     const userId = req.userId;
-
     const user = await userModel.findById(userId);
-    if (!user) {
-      return res.json({ success: false, message: "User not found" });
-    }
+    if (!user) return res.json({ success: false, message: "User not found" });
 
     res.json({ success: true, cartData: user.cartData || {} });
   } catch (error) {
