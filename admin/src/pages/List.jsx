@@ -10,7 +10,7 @@ const List = ({ token, backendUrl }) => {
   const fetchProducts = async () => {
     try {
       setLoading(true)
-      const response = await axios.get(backendUrl + '/api/product/list')
+      const response = await axios.get(backendUrl + '/api/product/list?all=true')
 
       if (response.data.success) {
         setProducts(response.data.products.reverse())
